@@ -1,0 +1,1 @@
+# Notificações internas do sistema

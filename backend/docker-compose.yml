@@ -1,0 +1,118 @@
+# ===========================
+# backend/docker-compose.yml
+# ===========================
+"""
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: weatherbiz-postgres
+    environment:
+      POSTGRES_DB: weatherbiz
+      POSTGRES_USER: weatherbiz
+      POSTGRES_PASSWORD: weatherbiz123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weatherbiz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: weatherbiz-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: weatherbiz-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@weatherbiz.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weatherbiz-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app
+      - ./alembic:/alembic
+      - ./exports:/exports
+      - ./ml_models:/ml_models
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://weatherbiz:weatherbiz123@postgres:5432/weatherbiz
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weatherbiz-celery
+    command: celery -A app.tasks worker --loglevel=info
+    volumes:
+      - ./app:/app
+      - ./exports:/exports
+      - ./ml_models:/ml_models
+    environment:
+      - DATABASE_URL=postgresql://weatherbiz:weatherbiz123@postgres:5432/weatherbiz
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weatherbiz-celery-beat
+    command: celery -A app.tasks beat --loglevel=info
+    volumes:
+      - ./app:/app
+    environment:
+      - DATABASE_URL=postgresql://weatherbiz:weatherbiz123@postgres:5432/weatherbiz
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weatherbiz-flower
+    command: celery -A app.tasks flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - DATABASE_URL=postgresql://weatherbiz:weatherbiz123@postgres:5432/weatherbiz
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - celery
+
+volumes:
+  postgres_data:
+  redis_data:
+"""
